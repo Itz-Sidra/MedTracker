@@ -42,19 +42,19 @@ async def main(page: Page):
                         content=Column(
                             controls=[
                                 Container(
-                                    margin=margin.only(top=310),
+                                    margin=margin.only(top=355),
                                     content=Text(
-                                        value="Your personal assistant, but for your pills!",
-                                        size=28,
+                                        value="Your personal \n assistant, but for \nyour pills!",
+                                        size=22,
                                         color="white",
                                         weight=FontWeight.BOLD,
                                         text_align=TextAlign.CENTER,
                                     ),
                                 ),
                                 Container(
-                                    margin=margin.only(top=10, bottom=40),
+                                    margin=margin.only(top=5, bottom=25),
                                     content=Text(
-                                        value="Your daily dose, perfectly on time.",
+                                        value="Your daily dose, perfectly \non time.",
                                         size=16,
                                         color="white",
                                         text_align=TextAlign.CENTER,
@@ -64,7 +64,11 @@ async def main(page: Page):
                                     width=200,
                                     height=45,
                                     content=ElevatedButton(
-                                        text="Sign Up",
+                                        content = Text(
+                                            value = "Sign Up",
+                                            text_align=TextAlign.CENTER,
+                                            weight=FontWeight.BOLD
+                                        ),
                                         bgcolor="#E0F2F1",
                                         color="black",
                                         width=200,
@@ -72,7 +76,7 @@ async def main(page: Page):
                                     ),
                                 ),
                                 Container(
-                                    margin=margin.only(top=16),
+                                    margin=margin.only(top=10),
                                     content=Text(
                                         value="Already have an account? Login",
                                         size=14,
@@ -103,8 +107,8 @@ async def main(page: Page):
             controls=[
                 Image(
                     src="logo.png",
-                    width=128,
-                    height=128,
+                    width=200,
+                    height=200,
                 ),
                 Text(
                     value="Stay on Track,\nStay Healthy!!",
