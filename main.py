@@ -26,6 +26,19 @@ async def main(page: Page):
             for i, pos in enumerate(capsule_positions)
         ]
 
+        def go_to_login(e):
+            print("Navigating to Login Page")
+            # Replace the following with your logic to navigate to the login page
+            login_page = Container(
+                content=Text(value="Login Page Placeholder", size=24, color="white"),
+                width=320,
+                height=650,
+                bgcolor="#2C2C2C",
+                alignment=alignment.center
+            )
+            outer_container.content = login_page
+            page.update()
+
         # Welcome page content
         welcome_page = Container(
             width=320,
@@ -77,11 +90,13 @@ async def main(page: Page):
                                 ),
                                 Container(
                                     margin=margin.only(top=10),
-                                    content=Text(
-                                        value="Already have an account? Login",
-                                        size=14,
-                                        color="white",
-                                        text_align=TextAlign.CENTER,
+                                    content=TextButton(
+                                        text="Already have an account? Login",
+                                        on_click=go_to_login,
+                                        style=ButtonStyle(
+                                            color="white",
+                                            text_style=TextStyle(size=14),
+                                        ),
                                     ),
                                 ),
                             ],
