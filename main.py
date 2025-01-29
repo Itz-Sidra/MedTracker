@@ -19,13 +19,20 @@ class MedicationSchedule:
         with open(self.filename, 'w') as f:
             json.dump(self.schedule, f)
 
-    def add_medication(self, name, time, type):
+    def add_medication(self, name, time, specific_time, type):
         self.schedule.append({
             "name": name,
             "time": time,
+            "specific_time": specific_time,
             "type": type
         })
         self.save_schedule()
+
+    def update_medication_time(self, index, new_time, new_specific_time):
+        if 0 <= index < len(self.schedule):
+            self.schedule[index]["time"] = new_time
+            self.schedule[index]["specific_time"] = new_specific_time
+            self.save_schedule()
 
     def get_todays_medications(self):
         return self.schedule
@@ -37,21 +44,74 @@ async def main(page: Page):
     page.window_height = 650
 
     med_schedule = MedicationSchedule()
+    page.refs = {"time_dropdown": Ref[Dropdown](), "specific_time_field": Ref[TextField]()}
 
-    def create_medication_card(med):
+    def show_time_dialog(index, current_time, current_specific_time):
+        def update_medication_time(e):
+            new_time = page.refs["time_dropdown"].current.value
+            new_specific_time = page.refs["specific_time_field"].current.value
+            med_schedule.update_medication_time(index, new_time, new_specific_time)
+            dlg.open = False
+            switch_to_home()
+            page.update()
+
+        dlg = AlertDialog(
+            title=Text("Update Medication Time"),
+            content=Column(
+                controls=[
+                    Dropdown(
+                        label="Time of Day",
+                        value=current_time,
+                        options=[
+                            dropdown.Option("breakfast"),
+                            dropdown.Option("lunch"),
+                            dropdown.Option("dinner"),
+                            dropdown.Option("bedtime")
+                        ],
+                        width=200,
+                        ref=page.refs["time_dropdown"]
+                    ),
+                    TextField(
+                        label="Specific Time (HH:MM)",
+                        value=current_specific_time,
+                        width=200,
+                        ref=page.refs["specific_time_field"]
+                    )
+                ],
+                spacing=10,
+            ),
+            actions=[
+                TextButton("Cancel", on_click=lambda e: setattr(dlg, 'open', False)),
+                TextButton("Update", on_click=update_medication_time),
+            ],
+            actions_alignment="end",
+        )
+        page.dialog = dlg
+        dlg.open = True
+        page.update()
+
+    def create_medication_card(med, index):
         icon = Icon(name=icons.MEDICAL_SERVICES_OUTLINED if med["type"] == "Tablet" else icons.MEDICATION)
+        time_display = f"Before {med['time']}"
+        if med.get("specific_time"):
+            time_display += f" ({med['specific_time']})"
+            
         return Container(
             content=Row(
                 controls=[
                     icon,
                     Column(
                         controls=[
-                            Text(med["type"], weight="bold", color="white"),
-                            Text(f"Before {med['time']}", color="white", size=12)
+                            Text(med["name"], weight="bold", color="white"),  # Added medication name
+                            Text(time_display, color="white", size=12)
                         ],
                     ),
                     Container(width=10),
-                    Icon(name=icons.NOTIFICATIONS_NONE, color="white")
+                    IconButton(
+                        icon=icons.NOTIFICATIONS_NONE,
+                        icon_color="white",
+                        on_click=lambda e: show_time_dialog(index, med["time"], med.get("specific_time", ""))
+                    )
                 ],
                 alignment=MainAxisAlignment.SPACE_BETWEEN
             ),
@@ -62,9 +122,9 @@ async def main(page: Page):
         )
 
     def create_home_page():
-        todays_meds = med_schedule.get_todays_medications()
-        med_cards = [create_medication_card(med) for med in todays_meds]
-
+        medications = med_schedule.get_todays_medications()
+        med_cards = [create_medication_card(med, i) for i, med in enumerate(medications)]
+        
         return Container(
             width=320,
             height=650,
@@ -72,14 +132,13 @@ async def main(page: Page):
             padding=padding.all(20),
             content=Column(
                 controls=[
-                    # Header
                     Container(
                         content=Row(
                             controls=[
                                 Column(
                                     controls=[
                                         Text("Hello!", size=16, color="#666666"),
-                                        Text("XYZ ABC", size=24, weight="bold")
+                                        Text("Med Tracker", size=24, weight="bold")
                                     ]
                                 ),
                                 Container(
@@ -91,8 +150,6 @@ async def main(page: Page):
                             alignment=MainAxisAlignment.SPACE_BETWEEN
                         )
                     ),
-                    
-                    # Progress Card
                     Container(
                         margin=margin.only(top=20),
                         padding=20,
@@ -111,12 +168,7 @@ async def main(page: Page):
                                         ElevatedButton(
                                             "View Task",
                                             bgcolor="white",
-                                            color="#26A69A",
-                                            style=ButtonStyle(
-                                                shape={
-                                                    "": RoundedRectangleBorder(radius=8),
-                                                }
-                                            ),
+                                            color="#26A69A"
                                         )
                                     ]
                                 ),
@@ -131,8 +183,6 @@ async def main(page: Page):
                             alignment=MainAxisAlignment.SPACE_BETWEEN
                         )
                     ),
-
-                    # Today's Medications Section
                     Container(
                         margin=margin.only(top=20),
                         content=Column(
@@ -146,64 +196,19 @@ async def main(page: Page):
                             ]
                         )
                     ),
-
-                    # Navigation Bar
-                    Container(
-                        margin=margin.only(top=20),
-                        padding=15,
-                        bgcolor="#26A69A",
-                        border_radius=15,
-                        content=Row(
-                            controls=[
-                                TextButton(
-                                    content=Column(
-                                        controls=[
-                                            Icon(icons.ACCESS_TIME_FILLED, color="white"),
-                                            Text("Today's\nMedication", color="white", size=12)
-                                        ],
-                                        horizontal_alignment=CrossAxisAlignment.CENTER
-                                    ),
-                                    on_click=lambda _: switch_to_home()
-                                ),
-                                TextButton(
-                                    content=Column(
-                                        controls=[
-                                            Icon(icons.CALENDAR_MONTH, color="white"),
-                                            Text("Schedule", color="white", size=12)
-                                        ],
-                                        horizontal_alignment=CrossAxisAlignment.CENTER
-                                    ),
-                                    on_click=lambda _: switch_to_schedule()
-                                )
-                            ],
-                            alignment=MainAxisAlignment.SPACE_EVENLY
-                        )
-                    )
+                    create_navigation_bar()
                 ]
             )
         )
 
     def create_schedule_page():
-        def add_medication(e):
-            med_name = name_field.value
-            med_time = time_field.value
-            med_type = type_dropdown.value
-            
-            if med_name and med_time and med_type:
-                med_schedule.add_medication(med_name, med_time, med_type)
-                name_field.value = ""
-                time_field.value = ""
-                type_dropdown.value = None
-                switch_to_home()
-                page.update()
-
         name_field = TextField(
             label="Medication Name",
             border_color="#26A69A"
         )
         
         time_field = Dropdown(
-            label="Time",
+            label="Time of Day",
             options=[
                 dropdown.Option("breakfast"),
                 dropdown.Option("lunch"),
@@ -211,6 +216,12 @@ async def main(page: Page):
                 dropdown.Option("bedtime")
             ],
             border_color="#26A69A"
+        )
+        
+        specific_time_field = TextField(
+            label="Specific Time (HH:MM)",
+            border_color="#26A69A",
+            helper_text="Optional: Enter time in 24-hour format"
         )
         
         type_dropdown = Dropdown(
@@ -221,6 +232,21 @@ async def main(page: Page):
             ],
             border_color="#26A69A"
         )
+
+        def add_medication(e):
+            if name_field.value and time_field.value and type_dropdown.value:
+                med_schedule.add_medication(
+                    name_field.value,
+                    time_field.value,
+                    specific_time_field.value,
+                    type_dropdown.value
+                )
+                name_field.value = ""
+                time_field.value = None
+                specific_time_field.value = ""
+                type_dropdown.value = None
+                switch_to_home()
+                page.update()
 
         return Container(
             width=320,
@@ -235,6 +261,8 @@ async def main(page: Page):
                     Container(height=10),
                     time_field,
                     Container(height=10),
+                    specific_time_field,
+                    Container(height=10),
                     type_dropdown,
                     Container(height=20),
                     ElevatedButton(
@@ -245,44 +273,45 @@ async def main(page: Page):
                         on_click=add_medication
                     ),
                     Container(height=20),
-                    # Navigation Bar
-                    Container(
-                        padding=15,
-                        bgcolor="#26A69A",
-                        border_radius=15,
-                        content=Row(
-                            controls=[
-                                TextButton(
-                                    content=Column(
-                                        controls=[
-                                            Icon(icons.ACCESS_TIME_FILLED, color="white"),
-                                            Text("Today's\nMedication", color="white", size=12)
-                                        ],
-                                        horizontal_alignment=CrossAxisAlignment.CENTER
-                                    ),
-                                    on_click=lambda _: switch_to_home()
-                                ),
-                                TextButton(
-                                    content=Column(
-                                        controls=[
-                                            Icon(icons.CALENDAR_MONTH, color="white"),
-                                            Text("Schedule", color="white", size=12)
-                                        ],
-                                        horizontal_alignment=CrossAxisAlignment.CENTER
-                                    ),
-                                    on_click=lambda _: switch_to_schedule()
-                                )
-                            ],
-                            alignment=MainAxisAlignment.SPACE_EVENLY
-                        )
-                    )
+                    create_navigation_bar()
                 ]
+            )
+        )
+
+    def create_navigation_bar():
+        return Container(
+            padding=15,
+            bgcolor="#26A69A",
+            border_radius=15,
+            content=Row(
+                controls=[
+                    TextButton(
+                        content=Column(
+                            controls=[
+                                Icon(icons.ACCESS_TIME_FILLED, color="white"),
+                                Text("Today's\nMedication", color="white", size=12)
+                            ],
+                            horizontal_alignment=CrossAxisAlignment.CENTER
+                        ),
+                        on_click=lambda _: switch_to_home()
+                    ),
+                    TextButton(
+                        content=Column(
+                            controls=[
+                                Icon(icons.CALENDAR_MONTH, color="white"),
+                                Text("Schedule", color="white", size=12)
+                            ],
+                            horizontal_alignment=CrossAxisAlignment.CENTER
+                        ),
+                        on_click=lambda _: switch_to_schedule()
+                    )
+                ],
+                alignment=MainAxisAlignment.SPACE_EVENLY
             )
         )
 
     def create_login_page():
         def handle_login(e):
-            # Add your login validation here
             switch_to_home()
 
         return Container(
@@ -328,6 +357,64 @@ async def main(page: Page):
                         bgcolor="#E0F2F1",
                         color="black",
                         on_click=handle_login,
+                    ),
+                ],
+                horizontal_alignment=CrossAxisAlignment.CENTER,
+            ),
+        )
+
+    def create_welcome_page():
+        return Container(
+            width=320,
+            height=650,
+            bgcolor="#26A69A",
+            border_radius=35,
+            padding=padding.symmetric(horizontal=20),
+            content=Column(
+                controls=[
+                    Container(
+                        margin=margin.only(top=355),
+                        content=Text(
+                            "Your personal \nassistant, but for \nyour pills!",
+                            size=22,
+                            color="white",
+                            weight=FontWeight.BOLD,
+                            text_align=TextAlign.CENTER,
+                        ),
+                    ),
+                    Container(
+                        margin=margin.only(top=5, bottom=25),
+                        content=Text(
+                            "Your daily dose, perfectly \non time.",
+                            size=16,
+                            color="white",
+                            text_align=TextAlign.CENTER,
+                        ),
+                    ),
+                    Container(
+                        width=200,
+                        height=45,
+                        content=ElevatedButton(
+                            content=Text(
+                                "Sign Up",
+                                text_align=TextAlign.CENTER,
+                                weight=FontWeight.BOLD
+                            ),
+                            bgcolor="#E0F2F1",
+                            color="black",
+                            width=200,
+                            on_click=lambda _: print("Sign Up Clicked!"),
+                        ),
+                    ),
+                    Container(
+                        margin=margin.only(top=10),
+                        content=TextButton(
+                            text="Already have an account? Login",
+                            on_click=lambda _: switch_to_login(),
+                            style=ButtonStyle(
+                                color={"": colors.WHITE},
+                            ),
+                        ),
                     ),
                 ],
                 horizontal_alignment=CrossAxisAlignment.CENTER,
@@ -437,7 +524,7 @@ async def main(page: Page):
         page.update()
 
     # Initial loading page
-    phone_container = Container(
+    loading_page = Container(
         width=320,
         height=650,
         bgcolor="#E0F2F1",
@@ -462,7 +549,7 @@ async def main(page: Page):
         ),
     )
 
-    outer_container = Container(content=phone_container)
+    outer_container = Container(content=loading_page)
     page.add(outer_container)
 
     async def delayed_switch():
