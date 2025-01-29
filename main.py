@@ -37,6 +37,39 @@ class MedicationSchedule:
     def get_todays_medications(self):
         return self.schedule
 
+class UserAuth:
+    def __init__(self):
+        self.filename = "users.json"
+        self.users = self.load_users()
+
+    def load_users(self):
+        if os.path.exists(self.filename):
+            with open(self.filename, 'r') as f:
+                return json.load(f)
+        return {}
+
+    def save_users(self):
+        with open(self.filename, 'w') as f:
+            json.dump(self.users, f)
+
+    def register_user(self, email, password, name):
+        if email in self.users:
+            return False, "Email already registered"
+        
+        self.users[email] = {
+            "password": password,  # In real app, hash the password
+            "name": name
+        }
+        self.save_users()
+        return True, "Registration successful"
+
+    def login_user(self, email, password):
+        if email not in self.users:
+            return False, "Email not found"
+        if self.users[email]["password"] != password:  # In real app, verify hash
+            return False, "Incorrect password"
+        return True, self.users[email]["name"]
+
 async def main(page: Page):
     page.bgcolor = "#2C2C2C"
     page.title = "Med Tracker"
@@ -44,6 +77,7 @@ async def main(page: Page):
     page.window_height = 650
 
     med_schedule = MedicationSchedule()
+    user_auth = UserAuth()
     page.refs = {"time_dropdown": Ref[Dropdown](), "specific_time_field": Ref[TextField]()}
 
     def show_time_dialog(index, current_time, current_specific_time):
@@ -310,9 +344,166 @@ async def main(page: Page):
             )
         )
 
+    def create_signup_page():
+        name_field = TextField(
+            label="Full Name",
+            border_color="white",
+            color="white",
+            cursor_color="white"
+        )
+        
+        email_field = TextField(
+            label="Email",
+            border_color="white",
+            color="white",
+            cursor_color="white"
+        )
+        
+        password_field = TextField(
+            label="Password",
+            password=True,
+            border_color="white",
+            color="white",
+            cursor_color="white"
+        )
+        
+        confirm_password_field = TextField(
+            label="Confirm Password",
+            password=True,
+            border_color="white",
+            color="white",
+            cursor_color="white"
+        )
+        
+        error_text = Text(
+            color="red",
+            size=12,
+            visible=False
+        )
+
+        def handle_signup(e):
+            if not all([
+                name_field.value,
+                email_field.value,
+                password_field.value,
+                confirm_password_field.value
+            ]):
+                error_text.value = "Please fill in all fields"
+                error_text.visible = True
+                page.update()
+                return
+
+            if password_field.value != confirm_password_field.value:
+                error_text.value = "Passwords do not match"
+                error_text.visible = True
+                page.update()
+                return
+
+            success, message = user_auth.register_user(
+                email_field.value,
+                password_field.value,
+                name_field.value
+            )
+
+            if success:
+                switch_to_home()
+            else:
+                error_text.value = message
+                error_text.visible = True
+                page.update()
+
+        return Container(
+            width=320,
+            height=650,
+            bgcolor="#26A69A",
+            border_radius=35,
+            padding=padding.all(20),
+            content=Column(
+                controls=[
+                    Container(
+                        margin=margin.only(top=40),
+                        content=Text(
+                            "Sign Up",
+                            size=32,
+                            color="white",
+                            weight=FontWeight.BOLD,
+                            text_align=TextAlign.CENTER,
+                        ),
+                    ),
+                    Container(height=30),
+                    name_field,
+                    Container(height=20),
+                    email_field,
+                    Container(height=20),
+                    password_field,
+                    Container(height=20),
+                    confirm_password_field,
+                    Container(height=10),
+                    error_text,
+                    Container(height=30),
+                    ElevatedButton(
+                        content=Text(
+                            "Sign Up",
+                            weight=FontWeight.BOLD,
+                        ),
+                        width=200,
+                        bgcolor="#E0F2F1",
+                        color="black",
+                        on_click=handle_signup,
+                    ),
+                    Container(height=20),
+                    TextButton(
+                        text="Already have an account? Login",
+                        on_click=lambda _: switch_to_login(),
+                        style=ButtonStyle(
+                            color={"": colors.WHITE},
+                        ),
+                    ),
+                ],
+                horizontal_alignment=CrossAxisAlignment.CENTER,
+            ),
+        )
+
     def create_login_page():
+        email_field = TextField(
+            label="Email",
+            border_color="white",
+            color="white",
+            cursor_color="white",
+        )
+        
+        password_field = TextField(
+            label="Password",
+            password=True,
+            border_color="white",
+            color="white",
+            cursor_color="white",
+        )
+
+        error_text = Text(
+            color="red",
+            size=12,
+            visible=False
+        )
+
         def handle_login(e):
-            switch_to_home()
+            if not email_field.value or not password_field.value:
+                error_text.value = "Please fill in all fields"
+                error_text.visible = True
+                page.update()
+                return
+
+            success, message = user_auth.login_user(
+                email_field.value,
+                password_field.value
+            )
+
+            if success:
+                switch_to_home()
+            else:
+                error_text.value = message
+                error_text.visible = True
+                page.update()
 
         return Container(
             width=320,
@@ -333,20 +524,11 @@ async def main(page: Page):
                         ),
                     ),
                     Container(height=40),
-                    TextField(
-                        label="Email",
-                        border_color="white",
-                        color="white",
-                        cursor_color="white",
-                    ),
+                    email_field,
                     Container(height=20),
-                    TextField(
-                        label="Password",
-                        password=True,
-                        border_color="white",
-                        color="white",
-                        cursor_color="white",
-                    ),
+                    password_field,
+                    Container(height=10),
+                    error_text,
                     Container(height=40),
                     ElevatedButton(
                         content=Text(
@@ -357,6 +539,14 @@ async def main(page: Page):
                         bgcolor="#E0F2F1",
                         color="black",
                         on_click=handle_login,
+                    ),
+                    Container(height=20),
+                    TextButton(
+                        text="Don't have an account? Sign Up",
+                        on_click=lambda _: switch_to_signup(),
+                        style=ButtonStyle(
+                            color={"": colors.WHITE},
+                        ),
                     ),
                 ],
                 horizontal_alignment=CrossAxisAlignment.CENTER,
@@ -403,7 +593,7 @@ async def main(page: Page):
                             bgcolor="#E0F2F1",
                             color="black",
                             width=200,
-                            on_click=lambda _: print("Sign Up Clicked!"),
+                            on_click=lambda _: switch_to_signup(),
                         ),
                     ),
                     Container(
@@ -421,6 +611,10 @@ async def main(page: Page):
             ),
         )
 
+    def switch_to_signup():
+        outer_container.content = create_signup_page()
+        page.update()
+    
     def switch_to_welcome(e=None):
         # Capsule images for the welcome page
         capsule_positions = [
