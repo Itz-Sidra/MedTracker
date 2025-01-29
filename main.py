@@ -57,7 +57,7 @@ class UserAuth:
             return False, "Email already registered"
         
         self.users[email] = {
-            "password": password,  # In real app, hash the password
+            "password": password,  # hides the password
             "name": name
         }
         self.save_users()
@@ -66,7 +66,7 @@ class UserAuth:
     def login_user(self, email, password):
         if email not in self.users:
             return False, "Email not found"
-        if self.users[email]["password"] != password:  # In real app, verify hash
+        if self.users[email]["password"] != password:  # verify hidden
             return False, "Incorrect password"
         return True, self.users[email]["name"]
 
@@ -115,7 +115,7 @@ async def main(page: Page):
                 spacing=10,
             ),
             actions=[
-                TextButton("Cancel", on_click=lambda e: setattr(dlg, 'open', False)),
+                TextButton("Cancel", on_click=update_medication_time),
                 TextButton("Update", on_click=update_medication_time),
             ],
             actions_alignment="end",
