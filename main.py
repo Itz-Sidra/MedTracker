@@ -8,39 +8,82 @@ class MedicationSchedule:
     def __init__(self):
         self.filename = "medication_schedule.json"
         self.schedule = self.load_schedule()
+        print(f"Initialized MedicationSchedule with data: {self.schedule}")  # Debug print
 
     def load_schedule(self):
         if os.path.exists(self.filename):
-            with open(self.filename, 'r') as f:
-                return json.load(f)
-        return []
+            try:
+                with open(self.filename, 'r') as f:
+                    data = json.load(f)
+                    # Clean up any null keys and merge their data
+                    if "null" in data:
+                        if None in data:
+                            # Merge null and None keys if both exist
+                            data["null"].extend(data[None])
+                            del data[None]
+                    print(f"Loaded schedule from file: {data}")
+                    return data
+            except json.JSONDecodeError:
+                print("Invalid JSON file, starting fresh")
+                return {}
+        print("No existing schedule file, starting with empty schedule")
+        return {}
 
     def save_schedule(self):
-        with open(self.filename, 'w') as f:
-            json.dump(self.schedule, f)
+        # Ensure we're not using None or "null" as keys
+        if None in self.schedule:
+            del self.schedule[None]
+        
+        # Handle the case where email is None
+        schedule_to_save = {}
+        for email, medications in self.schedule.items():
+            if email is None or email == "null":
+                continue  # Skip null entries
+            schedule_to_save[email] = medications
 
-    def add_medication(self, name, time, specific_time, type):
-        self.schedule.append({
+        with open(self.filename, 'w') as f:
+            json.dump(schedule_to_save, f)
+        print(f"Saved schedule to file: {schedule_to_save}")
+
+    def add_medication(self, email, name, time, specific_time, type):
+        if not email or email == "null":
+            print("Warning: Attempting to add medication without valid email")
+            return
+            
+        print(f"Adding medication for {email}: {name}")
+        if email not in self.schedule:
+            print(f"Creating new schedule for {email}")
+            self.schedule[email] = []
+            
+        self.schedule[email].append({
             "name": name,
             "time": time,
             "specific_time": specific_time,
             "type": type
         })
+        print(f"Updated schedule: {self.schedule}")
         self.save_schedule()
+    
+    def get_user_medications(self, email):
+        if not email or email == "null":
+            print("Warning: Attempting to get medications without valid email")
+            return []
+            
+        medications = self.schedule.get(email, [])
+        print(f"Retrieved medications for {email}: {medications}")
+        return medications
 
-    def update_medication_time(self, index, new_time, new_specific_time):
-        if 0 <= index < len(self.schedule):
-            self.schedule[index]["time"] = new_time
-            self.schedule[index]["specific_time"] = new_specific_time
+    def update_medication_time(self, email, index, new_time, new_specific_time):
+        if email in self.schedule and 0 <= index < len(self.schedule[email]):
+            self.schedule[email][index]["time"] = new_time
+            self.schedule[email][index]["specific_time"] = new_specific_time
             self.save_schedule()
-
-    def get_todays_medications(self):
-        return self.schedule
 
 class UserAuth:
     def __init__(self):
         self.filename = "users.json"
         self.users = self.load_users()
+        print(f"Loaded users: {self.users}")  # Debug print
 
     def load_users(self):
         if os.path.exists(self.filename):
@@ -51,8 +94,10 @@ class UserAuth:
     def save_users(self):
         with open(self.filename, 'w') as f:
             json.dump(self.users, f)
+        print(f"Saved users: {self.users}")  # Debug print
 
     def register_user(self, email, password, name):
+        print(f"Attempting to register user: {email}")  # Debug print
         if email in self.users:
             return False, "Email already registered"
         
@@ -61,13 +106,19 @@ class UserAuth:
             "name": name
         }
         self.save_users()
+        print(f"User registered successfully: {email}")  # Debug print
         return True, "Registration successful"
 
     def login_user(self, email, password):
+        print(f"Attempting to login user: {email}")  # Debug print
+        print(f"Current users: {self.users}")  # Debug print
         if email not in self.users:
+            print(f"Email not found: {email}")  # Debug print
             return False, "Email not found"
-        if self.users[email]["password"] != password:  # verify hidden
+        if self.users[email]["password"] != password:
+            print("Incorrect password")  # Debug print
             return False, "Incorrect password"
+        print(f"Login successful for: {email}")  # Debug print
         return True, self.users[email]["name"]
 
 async def main(page: Page):
@@ -75,6 +126,8 @@ async def main(page: Page):
     page.title = "Med Tracker"
     page.window_width = 320
     page.window_height = 650
+
+    current_user_email = None
 
     med_schedule = MedicationSchedule()
     user_auth = UserAuth()
@@ -84,7 +137,7 @@ async def main(page: Page):
         def update_medication_time(e):
             new_time = page.refs["time_dropdown"].current.value
             new_specific_time = page.refs["specific_time_field"].current.value
-            med_schedule.update_medication_time(index, new_time, new_specific_time)
+            med_schedule.update_medication_time(current_user_email, index, new_time, new_specific_time)
             dlg.open = False
             switch_to_home()
             page.update()
@@ -126,6 +179,7 @@ async def main(page: Page):
 
     # Medicine Cards
     def create_medication_card(med, index):
+        print(f"Creating card for medication: {med}")  # Debug print
         icon = Icon(name=icons.MEDICAL_SERVICES_OUTLINED if med["type"] == "Tablet" else icons.MEDICATION, color="white")
         time_display = f"Before {med['time']}"
         if med.get("specific_time"):
@@ -137,15 +191,15 @@ async def main(page: Page):
                     icon,
                     Column(
                         controls=[
-                            Text(med["name"], weight="bold", color="white"),  # Added medication name
-                            Text(time_display, color="white", size=12) # Medication time
+                            Text(med["name"], weight="bold", color="white"),
+                            Text(time_display, color="white", size=12)
                         ],
                     ),
                     Container(width=10),
                     IconButton(
-                        icon=icons.NOTIFICATIONS_NONE, #Notification icon
+                        icon=icons.NOTIFICATIONS_NONE,
                         icon_color="white",
-                        on_click=lambda e: show_time_dialog(index, med["time"], med.get("specific_time", "")) # on click go to change medication time
+                        on_click=lambda e: show_time_dialog(index, med["time"], med.get("specific_time", ""))
                     )
                 ],
                 alignment=MainAxisAlignment.SPACE_BETWEEN
@@ -155,10 +209,20 @@ async def main(page: Page):
             padding=15,
             margin=margin.only(bottom=10)
         )
+    
     # Home page
     def create_home_page():
-        medications = med_schedule.get_todays_medications()
-        med_cards = [create_medication_card(med, i) for i, med in enumerate(medications)]
+        nonlocal current_user_email
+        print(f"Creating home page for user: {current_user_email}")  # Debug print
+    
+        if current_user_email:
+            medications = med_schedule.get_user_medications(current_user_email)
+            print(f"Retrieved medications: {medications}")  # Debug print
+            med_cards = [create_medication_card(med, i) for i, med in enumerate(medications)]
+            print(f"Created {len(med_cards)} medication cards")  # Debug print
+        else:
+            print("No user email found")  # Debug print
+            med_cards = []
         
         return Container(
             width=320,
@@ -173,11 +237,11 @@ async def main(page: Page):
                                 Column(
                                     controls=[
                                         Text("Hello!", size=16, color="black"),
-                                        Text("User", size=24, weight="bold", color="black")
+                                        Text(current_user_email or "User", size=24, weight="bold", color="black")
                                     ]
                                 ),
                                 Container(
-                                    content=Icon(icons.ACCOUNT_CIRCLE, color="black"), # Account icon
+                                    content=Icon(icons.ACCOUNT_CIRCLE, color="black"),
                                     bgcolor="#E0F2F1",
                                     border_radius=50
                                 )
@@ -203,7 +267,7 @@ async def main(page: Page):
                 ]
             )
         )
-
+    
     def create_schedule_page():
         name_field = TextField(
             label="Medication Name",
@@ -240,6 +304,7 @@ async def main(page: Page):
         def add_medication(e):
             if name_field.value and time_field.value and type_dropdown.value:
                 med_schedule.add_medication(
+                    current_user_email,
                     name_field.value,
                     time_field.value,
                     specific_time_field.value,
@@ -458,21 +523,31 @@ async def main(page: Page):
         )
 
         def handle_login(e):
+            nonlocal current_user_email
+            print("Login button clicked!")  # Debug print
+            print(f"Email entered: {email_field.value}")  # Debug print
+        
             if not email_field.value or not password_field.value:
+                print("Missing fields")  # Debug print
                 error_text.value = "Please fill in all fields"
                 error_text.visible = True
                 page.update()
                 return
 
-            success, message = user_auth.login_user(
+            print("Attempting login...")  # Debug print
+            success, name = user_auth.login_user(
                 email_field.value,
                 password_field.value
             )
+            print(f"Login success: {success}, Response: {name}")  # Debug print
 
             if success:
+                print("Login successful, switching to home")  # Debug print
+                current_user_email = email_field.value
                 switch_to_home()
             else:
-                error_text.value = message
+                print(f"Login failed: {name}")  # Debug print
+                error_text.value = name
                 error_text.visible = True
                 page.update()
 
@@ -502,14 +577,11 @@ async def main(page: Page):
                     error_text,
                     Container(height=40),
                     ElevatedButton(
-                        content=Text(
-                            "Login",
-                            weight=FontWeight.BOLD,
-                        ),
+                        text="Login",
                         width=200,
                         bgcolor="#E0F2F1",
                         color="black",
-                        on_click=handle_login,
+                        on_click=handle_login
                     ),
                     Container(height=20),
                     TextButton(
