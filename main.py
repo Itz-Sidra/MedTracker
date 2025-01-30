@@ -124,8 +124,9 @@ async def main(page: Page):
         dlg.open = True
         page.update()
 
+    # Medicine Cards
     def create_medication_card(med, index):
-        icon = Icon(name=icons.MEDICAL_SERVICES_OUTLINED if med["type"] == "Tablet" else icons.MEDICATION)
+        icon = Icon(name=icons.MEDICAL_SERVICES_OUTLINED if med["type"] == "Tablet" else icons.MEDICATION, color="white")
         time_display = f"Before {med['time']}"
         if med.get("specific_time"):
             time_display += f" ({med['specific_time']})"
@@ -137,24 +138,24 @@ async def main(page: Page):
                     Column(
                         controls=[
                             Text(med["name"], weight="bold", color="white"),  # Added medication name
-                            Text(time_display, color="white", size=12)
+                            Text(time_display, color="white", size=12) # Medication time
                         ],
                     ),
                     Container(width=10),
                     IconButton(
-                        icon=icons.NOTIFICATIONS_NONE,
+                        icon=icons.NOTIFICATIONS_NONE, #Notification icon
                         icon_color="white",
-                        on_click=lambda e: show_time_dialog(index, med["time"], med.get("specific_time", ""))
+                        on_click=lambda e: show_time_dialog(index, med["time"], med.get("specific_time", "")) # on click go to change medication time
                     )
                 ],
                 alignment=MainAxisAlignment.SPACE_BETWEEN
             ),
-            bgcolor="#7DAEA3",
+            bgcolor="#449684",
             border_radius=15,
             padding=15,
             margin=margin.only(bottom=10)
         )
-
+    # Home page
     def create_home_page():
         medications = med_schedule.get_todays_medications()
         med_cards = [create_medication_card(med, i) for i, med in enumerate(medications)]
@@ -171,47 +172,14 @@ async def main(page: Page):
                             controls=[
                                 Column(
                                     controls=[
-                                        Text("Hello!", size=16, color="#666666"),
-                                        Text("Med Tracker", size=24, weight="bold")
+                                        Text("Hello!", size=16, color="black"),
+                                        Text("User", size=24, weight="bold", color="black")
                                     ]
                                 ),
                                 Container(
-                                    content=Icon(icons.ACCOUNT_CIRCLE),
+                                    content=Icon(icons.ACCOUNT_CIRCLE, color="black"), # Account icon
                                     bgcolor="#E0F2F1",
                                     border_radius=50
-                                )
-                            ],
-                            alignment=MainAxisAlignment.SPACE_BETWEEN
-                        )
-                    ),
-                    Container(
-                        margin=margin.only(top=20),
-                        padding=20,
-                        bgcolor="#26A69A",
-                        border_radius=15,
-                        content=Row(
-                            controls=[
-                                Column(
-                                    controls=[
-                                        Text(
-                                            "Your today's task\nalmost done!",
-                                            color="white",
-                                            size=16,
-                                            weight="bold"
-                                        ),
-                                        ElevatedButton(
-                                            "View Task",
-                                            bgcolor="white",
-                                            color="#26A69A"
-                                        )
-                                    ]
-                                ),
-                                ProgressRing(
-                                    value=85,
-                                    width=8,
-                                    height=80,
-                                    color="white",
-                                    bgcolor="#4DB6AC"
                                 )
                             ],
                             alignment=MainAxisAlignment.SPACE_BETWEEN
@@ -224,7 +192,8 @@ async def main(page: Page):
                                 Text(
                                     "Today's Medications",
                                     size=20,
-                                    weight="bold"
+                                    weight="bold",
+                                    color="black"
                                 ),
                                 Column(controls=med_cards)
                             ]
@@ -238,11 +207,12 @@ async def main(page: Page):
     def create_schedule_page():
         name_field = TextField(
             label="Medication Name",
-            border_color="#26A69A"
+            border_color="#26A69A",
+            color="black",
         )
         
         time_field = Dropdown(
-            label="Time of Day",
+            label="Time of Day", color="grey",  # find a nice color for this
             options=[
                 dropdown.Option("breakfast"),
                 dropdown.Option("lunch"),
@@ -254,12 +224,12 @@ async def main(page: Page):
         
         specific_time_field = TextField(
             label="Specific Time (HH:MM)",
+            color = "black",
             border_color="#26A69A",
-            helper_text="Optional: Enter time in 24-hour format"
         )
         
         type_dropdown = Dropdown(
-            label="Type",
+            label="Type", color = "grey",
             options=[
                 dropdown.Option("Tablet"),
                 dropdown.Option("Capsule")
@@ -289,7 +259,7 @@ async def main(page: Page):
             padding=20,
             content=Column(
                 controls=[
-                    Text("Add Medication Schedule", size=24, weight="bold"),
+                    Text("Add Medication Schedule", size=24, weight="bold", color="black"),
                     Container(height=20),
                     name_field,
                     Container(height=10),
@@ -314,6 +284,7 @@ async def main(page: Page):
 
     def create_navigation_bar():
         return Container(
+            margin=margin.only(bottom=2),
             padding=15,
             bgcolor="#26A69A",
             border_radius=15,
@@ -322,8 +293,8 @@ async def main(page: Page):
                     TextButton(
                         content=Column(
                             controls=[
-                                Icon(icons.ACCESS_TIME_FILLED, color="white"),
-                                Text("Today's\nMedication", color="white", size=12)
+                                Icon(icons.HOME, color="white"),
+                                Text("Home", color="white", size=12)
                             ],
                             horizontal_alignment=CrossAxisAlignment.CENTER
                         ),
