@@ -559,7 +559,8 @@ async def main(page: Page):
                             content=Text(
                                 "Sign Up",
                                 text_align=TextAlign.CENTER,
-                                weight=FontWeight.BOLD
+                                weight=FontWeight.BOLD,
+                                on_click=lambda _: switch_to_signup()
                             ),
                             bgcolor="#E0F2F1",
                             color="black",
@@ -646,12 +647,12 @@ async def main(page: Page):
                                         content=Text(
                                             value="Sign Up",
                                             text_align=TextAlign.CENTER,
-                                            weight=FontWeight.BOLD
+                                            weight=FontWeight.BOLD,
                                         ),
                                         bgcolor="#E0F2F1",
                                         color="black",
                                         width=200,
-                                        on_click=lambda _: print("Sign Up Clicked!"),
+                                        on_click=lambda _: switch_to_signup(),
                                     ),
                                 ),
                                 Container(
