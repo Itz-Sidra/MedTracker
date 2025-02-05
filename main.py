@@ -237,7 +237,7 @@ async def main(page: Page):
                                 Column(
                                     controls=[
                                         Text("Hello!", size=16, color="black"),
-                                        Text(current_user_email or "User", size=24, weight="bold", color="black")
+                                        Text(user_auth.users.get(current_user_email, {}).get("name", "User"), size=24, weight="bold", color="black")
                                     ]
                                 ),
                                 Container(
