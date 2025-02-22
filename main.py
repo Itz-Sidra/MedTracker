@@ -3,6 +3,18 @@ import asyncio
 import datetime
 import json
 import os
+import time  # Add this import for time.sleep()
+import serial
+import serial.tools.list_ports
+
+ports = list(serial.tools.list_ports.comports())
+for port in ports:
+    print(port.device)
+
+
+# Connect to Arduino (Change COM port accordingly)
+ser = serial.Serial("COM11", baudrate=9600, timeout=1)
+
 
 class MedicationSchedule:
     def __init__(self):
@@ -132,6 +144,22 @@ async def main(page: Page):
     med_schedule = MedicationSchedule()
     user_auth = UserAuth()
     page.refs = {"time_dropdown": Ref[Dropdown](), "specific_time_field": Ref[TextField]()}
+
+
+    async def start_arduino_handler():
+        while True:
+            try:
+                if ser.in_waiting:
+                    response = ser.readline().decode().strip()
+                    if response:
+                        print(f"Received from Arduino: {response}")
+                        # Process responses here or call a separate function
+                        # You could use page.update() within a lock if needed
+            except Exception as e:
+                print(f"Arduino communication error: {e}")
+            await asyncio.sleep(0.1)
+
+    asyncio.create_task(start_arduino_handler())
 
     def show_time_dialog(index, current_time, current_specific_time):
         def update_medication_time(e):
@@ -303,6 +331,7 @@ async def main(page: Page):
 
         def add_medication(e):
             if name_field.value and time_field.value and type_dropdown.value:
+                # First add to the app's internal schedule
                 med_schedule.add_medication(
                     current_user_email,
                     name_field.value,
@@ -310,6 +339,34 @@ async def main(page: Page):
                     specific_time_field.value,
                     type_dropdown.value
                 )
+
+                # Format the command for Arduino
+                if specific_time_field.value and len(specific_time_field.value) == 5:
+                    try:
+                        # You could extend this protocol to include medication name
+                        # Format: TIME:NAME (e.g., "08:30:Aspirin")
+                        command = f"{specific_time_field.value}:{name_field.value}\n"
+                        ser.write(command.encode())
+                        print(f"Sent to Arduino: {command}")
+                        
+                        # Wait for confirmation
+                        time.sleep(0.1)
+                        if ser.in_waiting:
+                            response = ser.readline().decode().strip()
+                            print(f"Arduino response: {response}")
+                            
+                            # Show feedback to user based on response
+                            if response.startswith("ADDED:"):
+                                # Could display a snackbar or dialog here
+                                print("Schedule successfully added to dispenser")
+                            else:
+                                print("Warning: Arduino did not confirm schedule")
+                        
+                    except Exception as ex:
+                        print(f"Error sending to Arduino: {ex}")
+                        # Show error message to user
+
+                # Reset fields and update UI
                 name_field.value = ""
                 time_field.value = None
                 specific_time_field.value = ""
@@ -347,6 +404,33 @@ async def main(page: Page):
             )
         )
 
+    def handle_arduino_responses():
+        """Function to continuously check for and handle Arduino responses"""
+        while True:
+            try:
+                if ser.in_waiting:
+                    response = ser.readline().decode().strip()
+                    print(f"Received from Arduino: {response}")
+                    
+                    if response.startswith("ARDUINO:READY"):
+                        print("Arduino is ready")
+                    elif response.startswith("ADDED:"):
+                        time_added = response.split(":")[1]
+                        print(f"Schedule confirmed: {time_added}")
+                    elif response.startswith("DISPENSED:"):
+                        dispensed_time = response.split(":")[1]
+                        print(f"Medication dispensed at {dispensed_time}")
+                        # You could update UI or send notification here
+                    elif response.startswith("ERROR:"):
+                        error_info = response.split(":")[1]
+                        print(f"Arduino error: {error_info}")
+                        # Handle error accordingly
+            except Exception as e:
+                print(f"Error reading from Arduino: {e}")
+                break
+            time.sleep(0.1)  # Small delay to prevent CPU hogging
+
+        
     def create_navigation_bar():
         return Container(
             margin=margin.only(bottom=2),
