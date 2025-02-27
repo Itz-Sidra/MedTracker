@@ -165,8 +165,34 @@ async def main(page: Page):
         print(f"Creating card for medication: {med}")  # Debug print
         icon = Icon(name=icons.MEDICAL_SERVICES_OUTLINED if med["type"] == "Tablet" else icons.MEDICATION, color="white")
         time_display = f"Before {med['time']}"
-        if med.get("specific_time"):
-            time_display += f" ({med['specific_time']})"
+        hour_value = ""
+        minute_value = ""
+        if med.get("specific_time") and len(med.get("specific_time", "")) == 5:
+            parts = med.get("specific_time").split(":")
+            if len(parts) == 2:
+                hour_value = parts[0]
+                minute_value = parts[1]
+
+        # Create dropdowns for hour and minute
+        hour_dropdown = Dropdown(
+            value=hour_value,
+            options=[dropdown.Option(f"{i:02d}") for i in range(24)],  # 00-23 hours
+            width=100,
+            bgcolor="white",
+            color="black",
+            border_radius=8,
+            visible=False  # Initially hidden
+        )
+
+        minute_dropdown = Dropdown(
+            value=minute_value,
+            options=[dropdown.Option(f"{i:02d}") for i in range(60)],  # 00-59 minutes
+            width=100,
+            bgcolor="white",
+            color="black",
+            border_radius=8,
+            visible=False  # Initially hidden
+        )
 
         # Create edit fields but initially hide them
         name_field = TextField(
@@ -174,8 +200,8 @@ async def main(page: Page):
             width=200,
             bgcolor="white",
             border_radius=8,
-            #changed
-            border_color="black",
+            border_color="#ccc",
+            color="black",
             visible=False  # Initially hidden
         )
         
@@ -189,6 +215,7 @@ async def main(page: Page):
             ],
             width=160,
             bgcolor="white",
+            color="black",
             border_radius=8,
             visible=False  # Initially hidden
         )
@@ -206,7 +233,7 @@ async def main(page: Page):
         # Labels for edit fields
         name_label = Text("Name:", color="white", size=12, visible=False)
         time_label = Text("Time:", color="white", size=12, visible=False)
-        specific_time_label = Text("Specific (HH:MM):", color="white", size=12, visible=False)
+        specific_time_label = Text("Specific time:", color="white", size=12, visible=False)
         
         # Save button (initially hidden)
         save_button = ElevatedButton(
@@ -260,8 +287,21 @@ async def main(page: Page):
                     visible=False
                 ),
                 Container(height=5, visible=False),
-                Row(
-                    controls=[specific_time_label, specific_time_field],
+                Column(
+                    controls=[
+                        specific_time_label,
+                        Row([
+                            Column([
+                                Text("Hour", color="white", size=10),
+                                hour_dropdown
+                            ]),
+                            Container(width=5),
+                            Column([
+                                Text("Minute", color="white", size=10),
+                                minute_dropdown
+                            ])
+                        ])
+                    ],
                     visible=False
                 ),
                 Container(height=10),
@@ -284,7 +324,8 @@ async def main(page: Page):
             time_label.visible = True
             time_dropdown.visible = True
             specific_time_label.visible = True
-            specific_time_field.visible = True
+            hour_dropdown.visible = True  # Show hour dropdown
+            minute_dropdown.visible = True  # Show minute dropdown
             
             # Show save button and replace edit button with it
             save_button.visible = True
@@ -305,30 +346,57 @@ async def main(page: Page):
         def save_edit(e):
             new_name = name_field.value
             new_time = time_dropdown.value
-            new_specific_time = specific_time_field.value
+            
+            # Combine hour and minute into specific time format
+            new_specific_time = ""
+            if hour_dropdown.value and minute_dropdown.value:
+                new_specific_time = f"{hour_dropdown.value}:{minute_dropdown.value}"
 
             if current_user_email in med_schedule.schedule and 0 <= index < len(med_schedule.schedule[current_user_email]):
+                # Save original values to check if specific time was changed
+                original_specific_time = med_schedule.schedule[current_user_email][index].get("specific_time", "")
+                
+                # Update local schedule
                 med_schedule.schedule[current_user_email][index]["name"] = new_name
                 med_schedule.schedule[current_user_email][index]["time"] = new_time
                 med_schedule.schedule[current_user_email][index]["specific_time"] = new_specific_time
+                med_schedule.save_schedule()
                 
-                # If a specific time is provided, update the Arduino schedule too
+                # If a specific time is provided, update the Arduino schedule
                 if new_specific_time and len(new_specific_time) == 5:
                     try:
-                        # Format command for Arduino to update the schedule
-                        command = f"UPDATE:{index}:{new_specific_time}:{new_name}\n"
-                        ser.write(command.encode())
-                        print(f"Sent update to Arduino: {command}")
-                        
-                        # Wait for confirmation
-                        time.sleep(0.1)
-                        if ser.in_waiting:
-                            response = ser.readline().decode().strip()
-                            print(f"Arduino response to update: {response}")
+                        # Check if time changed or was newly added
+                        if original_specific_time != new_specific_time or not original_specific_time:
+                            # Format command for Arduino to update the schedule
+                            # First we send a DELETE command if it had a previous time
+                            if original_specific_time:
+                                delete_cmd = f"DELETE:{index}\n"
+                                ser.write(delete_cmd.encode())
+                                print(f"Sent delete to Arduino before update: {delete_cmd}")
+                                time.sleep(0.1)  # Wait for processing
+                            
+                            # Then send the new time as if it's a new entry
+                            add_cmd = f"{new_specific_time}:{new_name}\n"
+                            ser.write(add_cmd.encode())
+                            print(f"Sent new time to Arduino: {add_cmd}")
+                            
+                            # Wait for confirmation
+                            time.sleep(0.1)
+                            if ser.in_waiting:
+                                response = ser.readline().decode().strip()
+                                print(f"Arduino response to update: {response}")
                     except Exception as ex:
                         print(f"Error sending update to Arduino: {ex}")
                 
-                med_schedule.save_schedule()
+                # If specific time was removed, delete from Arduino
+                elif original_specific_time and not new_specific_time:
+                    try:
+                        delete_cmd = f"DELETE:{index}\n"
+                        ser.write(delete_cmd.encode())
+                        print(f"Sent delete to Arduino for removed time: {delete_cmd}")
+                    except Exception as ex:
+                        print(f"Error sending delete to Arduino: {ex}")
+                        
                 switch_to_home()  # Refresh home page
 
         # Set the save button click handler
@@ -496,10 +564,18 @@ async def main(page: Page):
             border_color="#26A69A"
         )
         
-        specific_time_field = TextField(
-            label="Specific Time (HH:MM)",
-            color = "black",
-            border_color="#26A69A",
+        hour_dropdown = Dropdown(
+            label="Hour",
+            options=[dropdown.Option(f"{i:02d}") for i in range(24)],  # 00-23 hours
+            width=100,
+            border_color="#26A69A"
+        )
+
+        minute_dropdown = Dropdown(
+            label="Minute",
+            options=[dropdown.Option(f"{i:02d}") for i in range(60)],  # 00-59 minutes
+            width=100,
+            border_color="#26A69A"
         )
         
         type_dropdown = Dropdown(
@@ -513,21 +589,26 @@ async def main(page: Page):
 
         def add_medication(e):
             if name_field.value and time_field.value and type_dropdown.value:
+                # Combine hour and minute into specific time format
+                specific_time = ""
+                if hour_dropdown.value and minute_dropdown.value:
+                    specific_time = f"{hour_dropdown.value}:{minute_dropdown.value}"
+                
                 # First add to the app's internal schedule
                 med_schedule.add_medication(
                     current_user_email,
                     name_field.value,
                     time_field.value,
-                    specific_time_field.value,
+                    specific_time,
                     type_dropdown.value
                 )
 
                 # Format the command for Arduino
-                if specific_time_field.value and len(specific_time_field.value) == 5:
+                if specific_time and len(specific_time) == 5:
                     try:
                         # You could extend this protocol to include medication name
                         # Format: TIME:NAME (e.g., "08:30:Aspirin")
-                        command = f"{specific_time_field.value}:{name_field.value}\n"
+                        command = f"{specific_time}:{name_field.value}\n"
                         ser.write(command.encode())
                         print(f"Sent to Arduino: {command}")
                         
@@ -551,7 +632,8 @@ async def main(page: Page):
                 # Reset fields and update UI
                 name_field.value = ""
                 time_field.value = None
-                specific_time_field.value = ""
+                hour_dropdown.value = None
+                minute_dropdown.value = None
                 type_dropdown.value = None
                 switch_to_home()
                 page.update()
@@ -575,7 +657,19 @@ async def main(page: Page):
                             Container(height=10),
                             time_field,
                             Container(height=10),
-                            specific_time_field,
+                            Text("Specific Time", size=14, color="black"),
+                            #Container(height=5),
+                            Row([
+                                Column([
+                                    Text("Hour", size=12, color="black"), 
+                                    hour_dropdown
+                                ]),
+                                Container(width=10),  # Add spacing
+                                Column([
+                                    Text("Minute", size=12, color="black"),
+                                    minute_dropdown
+                                ])
+                            ]),
                             Container(height=10),
                             type_dropdown,
                             Container(height=20),
