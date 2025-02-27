@@ -5,10 +5,7 @@ MedTracker is an app developed as part of the ASEP project to streamline medicat
 ## Tech Stack
 
 - **Frontend**: [Flet]  
-- **Database**: [Firebase]  
-- **Backend**: [FastAPI] / [Flask]  
-- **Notification System**: [Plyer] 
-- **Hosting**: [Heroku] 
+- **Database**: [JSON]   
 
 ## About the Project
 
