@@ -169,14 +169,14 @@ async def main(page: Page):
         if med.get("specific_time"):
             time_display += f" ({med['specific_time']})"
 
-
-        # Editable fields
+        # Create edit fields but initially hide them
         name_field = TextField(
             value=med["name"],
-            width=160,
+            width=200,
             bgcolor="white",
             border_radius=8,
-            border_color="#ccc"
+            border_color="#ccc",
+            visible=False  # Initially hidden
         )
         
         time_dropdown = Dropdown(
@@ -187,62 +187,174 @@ async def main(page: Page):
                 dropdown.Option("dinner"),
                 dropdown.Option("bedtime")
             ],
-            width=110,
+            width=160,
             bgcolor="white",
-            border_radius=8
+            border_radius=8,
+            visible=False  # Initially hidden
+        )
+        
+        specific_time_field = TextField(
+            value=med.get("specific_time", ""),
+            hint_text="HH:MM",
+            width=160,
+            bgcolor="white",
+            border_radius=8,
+            border_color="#ccc",
+            visible=False  # Initially hidden
         )
 
-        # Save edited medication
+        # Labels for edit fields
+        name_label = Text("Name:", color="white", size=12, visible=False)
+        time_label = Text("Time:", color="white", size=12, visible=False)
+        specific_time_label = Text("Specific (HH:MM):", color="white", size=12, visible=False)
+        
+        # Save button (initially hidden)
+        save_button = ElevatedButton(
+            "Save", 
+            bgcolor="#32887A", 
+            color="white",
+            style=ButtonStyle(shape=RoundedRectangleBorder(radius=8)),
+            visible=False
+        )
+        
+        # Edit and Delete buttons (initially visible)
+        edit_button = ElevatedButton(
+            "Edit", 
+            bgcolor="#32887A", 
+            color="white",
+            style=ButtonStyle(shape=RoundedRectangleBorder(radius=8))
+        )
+        
+        delete_button = ElevatedButton(
+            "Delete", 
+            bgcolor="#D32F2F", 
+            color="white",
+            style=ButtonStyle(shape=RoundedRectangleBorder(radius=8))
+        )
+        
+        # Container for all the elements
+        card_column = Column(
+            controls=[
+                Row(   # Shows medication name and time
+                    controls=[
+                        icon,
+                        Column(
+                            controls=[
+                                Text(med["name"], weight="bold", color="white"),
+                                Text(time_display, color="white", size=12)
+                            ],
+                        ),
+                        Container(width=10),
+                    ],
+                    alignment=MainAxisAlignment.SPACE_BETWEEN
+                ),
+                # Edit fields section (initially hidden)
+                Container(height=10, visible=False),
+                Row(
+                    controls=[name_label, name_field],
+                    visible=False
+                ),
+                Container(height=5, visible=False),
+                Row(
+                    controls=[time_label, time_dropdown],
+                    visible=False
+                ),
+                Container(height=5, visible=False),
+                Row(
+                    controls=[specific_time_label, specific_time_field],
+                    visible=False
+                ),
+                Container(height=10),
+                # Buttons row
+                Row(
+                    controls=[edit_button, delete_button],
+                    alignment=MainAxisAlignment.END
+                )
+            ],
+        )
+        
+        # Function to toggle edit mode
+        def toggle_edit_mode(e):
+            # Hide regular display
+            edit_button.visible = False
+            
+            # Show edit fields
+            name_label.visible = True
+            name_field.visible = True
+            time_label.visible = True
+            time_dropdown.visible = True
+            specific_time_label.visible = True
+            specific_time_field.visible = True
+            
+            # Show save button and replace edit button with it
+            save_button.visible = True
+            
+            # Replace buttons in the row
+            card_column.controls[-1].controls = [save_button, delete_button]
+            
+            # Show spacers
+            for i in range(1, 7):
+                card_column.controls[i].visible = True
+                
+            page.update()
+        
+        # Set the edit button click handler
+        edit_button.on_click = toggle_edit_mode
+        
+        # Function to save edits
         def save_edit(e):
             new_name = name_field.value
             new_time = time_dropdown.value
+            new_specific_time = specific_time_field.value
 
             if current_user_email in med_schedule.schedule and 0 <= index < len(med_schedule.schedule[current_user_email]):
                 med_schedule.schedule[current_user_email][index]["name"] = new_name
                 med_schedule.schedule[current_user_email][index]["time"] = new_time
+                med_schedule.schedule[current_user_email][index]["specific_time"] = new_specific_time
+                
+                # If a specific time is provided, update the Arduino schedule too
+                if new_specific_time and len(new_specific_time) == 5:
+                    try:
+                        # Format command for Arduino to update the schedule
+                        command = f"UPDATE:{index}:{new_specific_time}:{new_name}\n"
+                        ser.write(command.encode())
+                        print(f"Sent update to Arduino: {command}")
+                        
+                        # Wait for confirmation
+                        time.sleep(0.1)
+                        if ser.in_waiting:
+                            response = ser.readline().decode().strip()
+                            print(f"Arduino response to update: {response}")
+                    except Exception as ex:
+                        print(f"Error sending update to Arduino: {ex}")
+                
                 med_schedule.save_schedule()
                 switch_to_home()  # Refresh home page
 
+        # Set the save button click handler
+        save_button.on_click = save_edit
+        
         # Delete medication
         def delete_medication(e):
             if current_user_email in med_schedule.schedule:
+                # Send delete command to Arduino if there's a specific time
+                if med.get("specific_time"):
+                    try:
+                        command = f"DELETE:{index}\n"
+                        ser.write(command.encode())
+                        print(f"Sent delete command to Arduino: {command}")
+                    except Exception as ex:
+                        print(f"Error sending delete command to Arduino: {ex}")
+                        
                 del med_schedule.schedule[current_user_email][index]
                 med_schedule.save_schedule()
                 switch_to_home()  # Refresh home page
 
+        # Set the delete button click handler
+        delete_button.on_click = delete_medication
+
         return Container(
-            content=Column(
-                controls=[
-                    Row(   # Creates a column(vertical) inside a row to show Medication name and time to take medication
-                        controls=[
-                            icon,
-                            Column(
-                                controls=[
-                                    Text(med["name"], weight="bold", color="white"),
-                                    Text(time_display, color="white", size=12)
-                                ],
-                            ),
-                            Container(width=10),
-                        ],
-                        alignment=MainAxisAlignment.SPACE_BETWEEN
-                    ),
-                    Row(
-                        controls=[
-                            ElevatedButton(
-                                "Save", on_click=save_edit,
-                                bgcolor="#32887A", color="white",
-                                style=ButtonStyle(shape=RoundedRectangleBorder(radius=8))
-                            ),
-                            ElevatedButton(
-                                "Delete", on_click=delete_medication,
-                                bgcolor="#D32F2F", color="white",
-                                style=ButtonStyle(shape=RoundedRectangleBorder(radius=8))
-                            ),
-                        ],
-                        alignment=MainAxisAlignment.END
-                    )
-                ],
-            ),
+            content=card_column,
             bgcolor="#32887A",
             border_radius=12,
             padding=15,
