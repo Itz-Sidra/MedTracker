@@ -161,62 +161,6 @@ async def main(page: Page):
 
     asyncio.create_task(start_arduino_handler())
 
-    def show_time_dialog(index, current_time, current_specific_time):
-        time_dropdown = Dropdown(
-            label="Time of Day",
-            value=current_time,
-            options=[
-                dropdown.Option("breakfast"),
-                dropdown.Option("lunch"),
-                dropdown.Option("dinner"),
-                dropdown.Option("bedtime")
-            ],
-            width=200,
-        )
-        
-        specific_time_field = TextField(
-            label="Specific Time (HH:MM)",
-            value=current_specific_time,
-            width=200,
-        )
-
-        dlg = AlertDialog(
-            modal=True,
-            title=Text("Update Medication Time"),
-            content=Container(
-                content=Column(
-                    controls=[
-                        time_dropdown,
-                        specific_time_field
-                    ],
-                    spacing=10,
-                    width=250,
-                ),
-                padding=10,
-            ),
-            actions=[
-                TextButton("Cancel", on_click=lambda e: close_dlg(e)),
-                TextButton("Update", on_click=lambda e: update_time(e))
-            ],
-            actions_alignment=MainAxisAlignment.END,
-        )
-
-        def close_dlg(e):
-            dlg.open = False
-            page.update()
-
-        def update_time(e):
-            new_time = time_dropdown.value
-            new_specific_time = specific_time_field.value
-            med_schedule.update_medication_time(current_user_email, index, new_time, new_specific_time)
-            dlg.open = False
-            switch_to_home()
-            page.update()
-
-        page.dialog = dlg
-        dlg.open = True
-        page.update()
-
     # Medicine Cards
     def create_medication_card(med, index):
         print(f"Creating card for medication: {med}")  # Debug print
@@ -224,35 +168,89 @@ async def main(page: Page):
         time_display = f"Before {med['time']}"
         if med.get("specific_time"):
             time_display += f" ({med['specific_time']})"
-            
+
+
+        # Editable fields
+        name_field = TextField(
+            value=med["name"],
+            width=160,
+            bgcolor="white",
+            border_radius=8,
+            border_color="#ccc"
+        )
+        
+        time_dropdown = Dropdown(
+            value=med["time"],
+            options=[
+                dropdown.Option("breakfast"),
+                dropdown.Option("lunch"),
+                dropdown.Option("dinner"),
+                dropdown.Option("bedtime")
+            ],
+            width=110,
+            bgcolor="white",
+            border_radius=8
+        )
+
+        # Save edited medication
+        def save_edit(e):
+            new_name = name_field.value
+            new_time = time_dropdown.value
+
+            if current_user_email in med_schedule.schedule and 0 <= index < len(med_schedule.schedule[current_user_email]):
+                med_schedule.schedule[current_user_email][index]["name"] = new_name
+                med_schedule.schedule[current_user_email][index]["time"] = new_time
+                med_schedule.save_schedule()
+                switch_to_home()  # Refresh home page
+
+        # Delete medication
+        def delete_medication(e):
+            if current_user_email in med_schedule.schedule:
+                del med_schedule.schedule[current_user_email][index]
+                med_schedule.save_schedule()
+                switch_to_home()  # Refresh home page
+
         return Container(
-            content=Row(
+            content=Column(
                 controls=[
-                    icon,
-                    Column(
+                    Row(   # Creates a column(vertical) inside a row to show Medication name and time to take medication
                         controls=[
-                            Text(med["name"], weight="bold", color="white"),
-                            Text(time_display, color="white", size=12)
+                            icon,
+                            Column(
+                                controls=[
+                                    Text(med["name"], weight="bold", color="white"),
+                                    Text(time_display, color="white", size=12)
+                                ],
+                            ),
+                            Container(width=10),
                         ],
+                        alignment=MainAxisAlignment.SPACE_BETWEEN
                     ),
-                    Container(width=10),
-                    IconButton(
-                        icon=icons.NOTIFICATIONS_OUTLINED,
-                        icon_color="white",
-                        on_click=lambda e, idx=index: show_time_dialog(
-                            idx,
-                            med["time"],
-                            med.get("specific_time", "")
-                        )
+                    Row(
+                        controls=[
+                            ElevatedButton(
+                                "Save", on_click=save_edit,
+                                bgcolor="#32887A", color="white",
+                                style=ButtonStyle(shape=RoundedRectangleBorder(radius=8))
+                            ),
+                            ElevatedButton(
+                                "Delete", on_click=delete_medication,
+                                bgcolor="#D32F2F", color="white",
+                                style=ButtonStyle(shape=RoundedRectangleBorder(radius=8))
+                            ),
+                        ],
+                        alignment=MainAxisAlignment.END
                     )
                 ],
-                alignment=MainAxisAlignment.SPACE_BETWEEN
             ),
-            bgcolor="#449684",
-            border_radius=15,
+            bgcolor="#32887A",
+            border_radius=12,
             padding=15,
-            margin=margin.only(bottom=10)
+            margin=margin.only(bottom=10),
+            shadow=BoxShadow(blur_radius=10, color=colors.BLACK12, offset=Offset(2, 2))
         )
+
+
     
     # Home page
     def create_home_page():
