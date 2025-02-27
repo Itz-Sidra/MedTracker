@@ -142,7 +142,11 @@ async def main(page: Page):
 
     med_schedule = MedicationSchedule()
     user_auth = UserAuth()
-    page.refs = {"time_dropdown": Ref[Dropdown](), "specific_time_field": Ref[TextField]()}
+    page.refs = {
+        "time_dropdown": Ref[Dropdown](),
+        "specific_time_field": Ref[TextField](),
+        "logout_button": Ref[ElevatedButton]()
+    }
 
 
     async def start_arduino_handler():
@@ -430,7 +434,20 @@ async def main(page: Page):
             shadow=BoxShadow(blur_radius=10, color=colors.BLACK12, offset=Offset(2, 2))
         )
 
+    def toggle_logout_button():
+        # Toggle visibility of logout button
+        logout_btn = page.refs["logout_button"].current
+        logout_btn.visible = not logout_btn.visible
+        page.update()
 
+    def logout():
+        nonlocal current_user_email
+        # Reset the current user
+        current_user_email = None
+        # Hide the logout button
+        page.refs["logout_button"].current.visible = False
+        # Navigate to the login page
+        switch_to_login()
     
     # Home page
     def create_home_page():
@@ -469,7 +486,11 @@ async def main(page: Page):
                                                 ]
                                             ),
                                             Container(
-                                                content=Icon(icons.ACCOUNT_CIRCLE, color="black"),
+                                                content=IconButton(
+                                                    icon=icons.ACCOUNT_CIRCLE,
+                                                    icon_color="black",
+                                                    on_click=lambda _: toggle_logout_button(),
+                                                ),
                                                 bgcolor="#E0F2F1",
                                                 border_radius=50
                                             )
@@ -503,6 +524,18 @@ async def main(page: Page):
                                 ),
                             ]
                         ),
+                    ),
+                    Container(
+                        ref=page.refs["logout_button"],
+                        content=ElevatedButton(
+                            "Logout",
+                            bgcolor="#D32F2F",
+                            color="white",
+                            on_click=lambda _: logout(),
+                        ),
+                        right=20,
+                        top=60,  # Position it below the account icon
+                        visible=False,  # Initially hidden
                     ),
                     Container(
                         width=320,
