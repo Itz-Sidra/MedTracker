@@ -7,14 +7,13 @@ import time  # Add this import for time.sleep()
 import serial
 import serial.tools.list_ports
 
+# Error handling feature
 ports = list(serial.tools.list_ports.comports())
 for port in ports:
     print(port.device)
 
-
-# Connect to Arduino (Change COM port accordingly)
+# Connect to Arduino 
 ser = serial.Serial("COM11", baudrate=9600, timeout=1)
-
 
 class MedicationSchedule:
     def __init__(self):
@@ -175,7 +174,8 @@ async def main(page: Page):
             width=200,
             bgcolor="white",
             border_radius=8,
-            border_color="#ccc",
+            #changed
+            border_color="black",
             visible=False  # Initially hidden
         )
         
@@ -419,7 +419,17 @@ async def main(page: Page):
                                                 weight="bold",
                                                 color="black"
                                             ),
-                                            Column(controls=med_cards)
+                                            # Make the medication list scrollable
+                                            Container(
+                                                height=450,  # Set a fixed height for scrolling
+                                                content=ListView(
+                                                    controls=med_cards,
+                                                    spacing=5,
+                                                    padding=10,
+                                                    auto_scroll=False
+                                                ),
+                                                border_radius=10,
+                                            )
                                         ]
                                     )
                                 ),
