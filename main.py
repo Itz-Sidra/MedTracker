@@ -512,39 +512,6 @@ async def main(page: Page):
                 ]
             )
         )
-    
-    def create_user_icon():
-        return Container(
-            content=IconButton(
-                icon=icons.ACCOUNT_CIRCLE,
-                icon_color="black",
-                icon_size=30,
-                on_click=show_user_menu
-            ),
-            bgcolor="#E0F2F1",
-            border_radius=50
-        )
-    
-    def create_header():
-        return Container(
-            content=Row(
-                controls=[
-                    Column(
-                        controls=[
-                            Text("Hello!", size=16, color="black"),
-                            Text(
-                                user_auth.users.get(current_user_email, {}).get("name", "User"),
-                                size=24,
-                                weight="bold",
-                                color="black"
-                            )
-                        ]
-                    ),
-                    create_user_icon()
-                ],
-                alignment=MainAxisAlignment.SPACE_BETWEEN
-            )
-        )
 
     def create_schedule_page():
         name_field = TextField(
@@ -691,50 +658,6 @@ async def main(page: Page):
             ]
         )
     )
-
-    def show_user_menu(e):
-        dlg = AlertDialog(
-            modal=True,
-            title=Text("User Menu"),
-            content=Container(
-                content=Column(
-                    controls=[
-                        Text(user_auth.users.get(current_user_email, {}).get("name", "User"), 
-                            size=16, weight="bold"),
-                        Text(current_user_email, size=14, color="grey"),
-                    ],
-                    spacing=10,
-                    width=250,
-                ),
-                padding=10,
-            ),
-            actions=[
-                TextButton(
-                    "Logout",
-                    on_click=lambda e: handle_logout(e, dlg),
-                    style=ButtonStyle(
-                        color={"": "red"}
-                    )
-                ),
-                TextButton("Cancel", on_click=lambda e: close_dlg(e, dlg))
-            ],
-            actions_alignment=MainAxisAlignment.END,
-        )
-
-        def close_dlg(e, dlg):
-            dlg.open = False
-            page.update()
-
-        def handle_logout(e, dlg):
-            nonlocal current_user_email
-            current_user_email = None
-            dlg.open = False
-            switch_to_login()
-            page.update()
-
-        page.dialog = dlg
-        dlg.open = True
-        page.update()
 
     def handle_arduino_responses():
         """Function to continuously check for and handle Arduino responses"""
