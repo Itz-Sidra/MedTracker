@@ -12,10 +12,10 @@ const int buzzerPin = 10;
 const int ledYellow = 8;
 const int ledGreen = 7;
 const int ledRed = 6;
-const int irSensorPin = 5;
+const int irSensorPin = 2;
 
-// Store up to 5 medication times
-const int MAX_SCHEDULES = 5;
+// Modified to store exactly 4 medication times
+const int MAX_SCHEDULES = 4;
 String scheduledTimes[MAX_SCHEDULES];
 String medNames[MAX_SCHEDULES];
 int scheduleCount = 0;
@@ -60,43 +60,75 @@ void setup() {
 }
 
 void checkSerial() {
-  if (Serial.available() > 0) {
-    String data = Serial.readStringUntil('\n');
-    data.trim();
-    
-    // Look for time format (HH:MM) or enhanced format (HH:MM:NAME)
-    if (data.length() >= 5 && data.charAt(2) == ':') {
-      if (scheduleCount < MAX_SCHEDULES) {
-        // Check if it contains medication name
-        int nameIndex = data.indexOf(':', 3);
-        if (nameIndex != -1) {
-          // Enhanced format with name
-          scheduledTimes[scheduleCount] = data.substring(0, nameIndex);
-          medNames[scheduleCount] = data.substring(nameIndex + 1);
-        } else {
-          // Simple time format
-          scheduledTimes[scheduleCount] = data;
-          medNames[scheduleCount] = "Medication";  // Default name
+ if (Serial.available() > 0) {
+        String data = Serial.readStringUntil('\n');
+        data.trim();
+
+        // Check for DELETE command
+        if (data.startsWith("DELETE:")) {
+            int index = data.substring(7).toInt();
+            if (index >= 0 && index < scheduleCount) {
+                // Shift all schedules up
+                for (int i = index; i < scheduleCount - 1; i++) {
+                    scheduledTimes[i] = scheduledTimes[i + 1];
+                    medNames[i] = medNames[i + 1];
+                }
+                scheduleCount--;
+                Serial.println("DELETED:SUCCESS");
+                return;
+            }
+            Serial.println("ERROR:INVALID_INDEX");
+            return;
         }
+
+        if (data.length() >= 5 && data.charAt(2) == ':') {
+            if (scheduleCount < MAX_SCHEDULES) {
+                // Check for duplicate schedule
+                for (int i = 0; i < scheduleCount; i++) {
+                    if (scheduledTimes[i] == data) {
+                        Serial.println("ERROR:DUPLICATE_TIME");
+                        return;
+                    }
+                }
+
+                int nameIndex = data.indexOf(':', 3);
+                if (nameIndex != -1) {
+                    scheduledTimes[scheduleCount] = data.substring(0, nameIndex);
+                    medNames[scheduleCount] = data.substring(nameIndex + 1);
+                } else {
+                    scheduledTimes[scheduleCount] = data;
+                    medNames[scheduleCount] = "Medication";
+                }
+
+                scheduleCount++;
         
-        scheduleCount++;
+                // Confirm receipt
+                Serial.print("ADDED:");
+                Serial.println(scheduledTimes[scheduleCount-1]);
         
-        // Confirm receipt
-        Serial.print("ADDED:");
-        Serial.println(scheduledTimes[scheduleCount-1]);
-        
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print("New Schedule:");
-        lcd.setCursor(0, 1);
-        lcd.print(scheduledTimes[scheduleCount-1]);
-        delay(2000);
-      } else {
-        // Schedule full
-        Serial.println("ERROR:SCHEDULE_FULL");
-      }
+                lcd.clear();
+                lcd.setCursor(0, 0);
+                lcd.print("New Schedule:");
+                lcd.setCursor(0, 1);
+                lcd.print(scheduledTimes[scheduleCount-1]);
+                delay(2000);
+            } else {
+                // Schedule full
+                Serial.println("ERROR:SCHEDULE_FULL");
+            }
+        } else if (data == "LIST") {
+            // New command to list all schedules
+            Serial.println("SCHEDULE_LIST_BEGIN");
+            for (int i = 0; i < scheduleCount; i++) {
+                Serial.print(i);
+                Serial.print(":");
+                Serial.print(scheduledTimes[i]);
+                Serial.print(":");
+                Serial.println(medNames[i]);
+            }
+            Serial.println("SCHEDULE_LIST_END");
+        }
     }
-  }
 }
 
 void loop() {
@@ -140,9 +172,13 @@ void dispensePill(int scheduleIndex) {
     delay(200);
   }
   
-  // Activate dispenser
+  // Activate dispenser - modified to rotate 45 degrees for 4 compartments
   digitalWrite(ledYellow, HIGH);
-  servo.write(90);
+  
+  // Calculate angle based on medication index (0-3) - 45 degrees per compartment
+  int angle = 45 * (scheduleIndex + 1);
+  
+  servo.write(angle);
   delay(1000);
   servo.write(0);
   delay(1000);
@@ -153,13 +189,55 @@ void dispensePill(int scheduleIndex) {
     digitalWrite(ledGreen, HIGH);
     lcd.clear();
     lcd.setCursor(0, 0);
-    lcd.print("Pill Dispensed!");
-    delay(3000);
-    digitalWrite(ledGreen, LOW);
+    lcd.print("Pill Dispensed");
+    lcd.setCursor(0, 1);
+    lcd.print("Take your Medicine!");
+    
+    // Wait one minute and check if pill was taken
+    unsigned long startTime = millis();
+    while (millis() - startTime < 60000) {  // 60000ms = 1 minute
+      // If pill is taken (IR sensor no longer detecting)
+      if (digitalRead(irSensorPin) == HIGH) {
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("Pill Taken");
+        lcd.setCursor(0, 1);
+        lcd.print("Successfully!");
+        digitalWrite(ledGreen, LOW);
+        
+        // Notify Flet app
+        Serial.print("TAKEN:");
+        Serial.println(scheduledTimes[scheduleIndex]);
+        return;
+      }
+      delay(100);  // Small delay to prevent overwhelming the processor
+    }
+    
+    // If we get here, pill wasn't taken within one minute
+    if (digitalRead(irSensorPin) == LOW){
+      digitalWrite(ledGreen, LOW);
+      digitalWrite(ledRed, HIGH);
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Warning:");
+      lcd.setCursor(0, 1);
+      lcd.print("Pill Not Taken!");
+    
+      // Sound alarm
+      for (int i = 0; i < 5; i++) {
+        tone(buzzerPin, 2000);
+        delay(500);
+        noTone(buzzerPin);
+        delay(200);
+      }
+    
+      digitalWrite(ledRed, LOW);
+    }
     
     // Notify Flet app
-    Serial.print("DISPENSED:");
+    Serial.print("NOT_TAKEN:");
     Serial.println(scheduledTimes[scheduleIndex]);
+    
   } else {
     lcd.clear();
     lcd.setCursor(0, 0);
@@ -192,6 +270,8 @@ void updateLCD() {
     lcd.setCursor(0, 1);
     lcd.print("Doses: ");
     lcd.print(scheduleCount);
+    lcd.print("/");
+    lcd.print(MAX_SCHEDULES);
   } else {
     lcd.setCursor(0, 1);
     lcd.print("No schedules");
