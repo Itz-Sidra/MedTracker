@@ -149,6 +149,68 @@ async def main(page: Page):
     }
 
 
+    # Sync Arduino schedules at startup
+    def sync_arduino_schedules(user_email):
+        if not user_email:
+            return
+            
+        # First, request the current Arduino schedule
+        try:
+            # Clear any pending data
+            ser.reset_input_buffer()
+            
+            # Request the list of schedules
+            ser.write("LIST\n".encode())
+            time.sleep(0.2)  # Wait for response
+            
+            arduino_schedules = []
+            recording = False
+            
+            # Read and process the list
+            while ser.in_waiting:
+                line = ser.readline().decode().strip()
+                print(f"Arduino says: {line}")
+                
+                if line == "SCHEDULE_LIST_BEGIN":
+                    recording = True
+                    continue
+                elif line == "SCHEDULE_LIST_END":
+                    recording = False
+                    break
+                
+                if recording and line:
+                    parts = line.split(":", 2)
+                    if len(parts) >= 3:
+                        arduino_schedules.append({
+                            "index": int(parts[0]),
+                            "time": parts[1],
+                            "name": parts[2]
+                        })
+            
+            print(f"Current Arduino schedules: {arduino_schedules}")
+            
+            # Get user medications from app
+            user_meds = med_schedule.get_user_medications(user_email)
+            
+            # Find medications with specific times that need to be added to Arduino
+            arduino_times = [s["time"] for s in arduino_schedules]
+            
+            for med in user_meds:
+                if med.get("specific_time") and len(med.get("specific_time", "")) == 5:
+                    if med["specific_time"] not in arduino_times:
+                        print(f"Adding missing schedule to Arduino: {med['specific_time']}:{med['name']}")
+                        command = f"{med['specific_time']}:{med['name']}\n"
+                        ser.write(command.encode())
+                        time.sleep(0.2)  # Wait for Arduino to process
+                        
+                        # Read confirmation
+                        if ser.in_waiting:
+                            response = ser.readline().decode().strip()
+                            print(f"Arduino response: {response}")
+                
+        except Exception as e:
+            print(f"Error syncing with Arduino: {e}")
+
     async def start_arduino_handler():
         while True:
             try:
@@ -168,7 +230,12 @@ async def main(page: Page):
     def create_medication_card(med, index):
         print(f"Creating card for medication: {med}")  # Debug print
         icon = Icon(name=icons.MEDICAL_SERVICES_OUTLINED if med["type"] == "Tablet" else icons.MEDICATION, color="white")
+        
+        # Update time display to show specific time when available
         time_display = f"Before {med['time']}"
+        if med.get("specific_time") and len(med.get("specific_time", "")) == 5:
+            time_display = f"At {med['specific_time']} ({med['time']})"
+        
         hour_value = ""
         minute_value = ""
         if med.get("specific_time") and len(med.get("specific_time", "")) == 5:
@@ -454,9 +521,21 @@ async def main(page: Page):
         nonlocal current_user_email
         print(f"Creating home page for user: {current_user_email}")
 
+        # Sync Arduino schedules when viewing the home page
+        sync_arduino_schedules(current_user_email)
+
         if current_user_email:
             medications = med_schedule.get_user_medications(current_user_email)
             print(f"Retrieved medications: {medications}")
+            
+            # Limit to 4 medications as requested
+            if len(medications) > 4:
+                medications = medications[:4]
+                # Update the schedule to limit to 4
+                med_schedule.schedule[current_user_email] = medications
+                med_schedule.save_schedule()
+                print("Limited medications to 4 as requested")
+                
             med_cards = [create_medication_card(med, i) for i, med in enumerate(medications)]
             print(f"Created {len(med_cards)} medication cards")
         else:
@@ -589,6 +668,38 @@ async def main(page: Page):
 
         def add_medication(e):
             if name_field.value and time_field.value and type_dropdown.value:
+                # Check if user already has 4 medications
+                medications = med_schedule.get_user_medications(current_user_email)
+                if len(medications) >= 4:
+                    # Create or update an error text field in red
+                    error_text = Text(
+                        value="You cannot add more than 4 medications",
+                        color="red",
+                        size=14,
+                        weight="bold"
+                    )
+                    
+                    # Add the error message to the UI or update it
+                    # If you already have a container for error messages, you could use that
+                    schedule_page_column = page.controls[0].content.controls[0].content
+                    
+                    # Check if error text already exists
+                    error_exists = False
+                    for i, control in enumerate(schedule_page_column.controls):
+                        if isinstance(control, Text) and control.color == "red":
+                            # Update existing error message
+                            schedule_page_column.controls[i] = error_text
+                            error_exists = True
+                            break
+                    
+                    # If no error message exists, insert it after the Add Medication button
+                    if not error_exists:
+                        # Insert after the Add Medication button (assuming it's the last control)
+                        schedule_page_column.controls.insert(-1, Container(height=10))
+                        schedule_page_column.controls.insert(-1, error_text)
+                    
+                    page.update()
+                    return
                 # Combine hour and minute into specific time format
                 specific_time = ""
                 if hour_dropdown.value and minute_dropdown.value:
